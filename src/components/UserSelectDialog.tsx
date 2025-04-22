@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -44,9 +44,13 @@ export const UserSelectDialog = ({
   async function fetchUsers() {
     setLoading(true);
     try {
+      console.log("UserSelectDialog: Solicitando lista de usuarios");
       const response = await apiRequest('/users/all');
+      console.log("UserSelectDialog: Respuesta de API:", response);
+      
       if (response.success && Array.isArray(response.users)) {
         setUsers(response.users);
+        console.log(`UserSelectDialog: Cargados ${response.users.length} usuarios`);
       } else {
         setUsers([]);
         toast({
@@ -55,7 +59,8 @@ export const UserSelectDialog = ({
           description: "No se pudieron cargar los usuarios"
         });
       }
-    } catch {
+    } catch (error) {
+      console.error("Error al cargar usuarios:", error);
       setUsers([]);
       toast({
         variant: "destructive",
@@ -75,6 +80,7 @@ export const UserSelectDialog = ({
 
   const handleSelectUser = (user: UserType) => {
     if (onUserSelect) {
+      console.log("Seleccionando usuario:", user.name, user.id);
       onUserSelect(user.id);
       onOpenChange(false);
     }
@@ -85,6 +91,9 @@ export const UserSelectDialog = ({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>
+            Selecciona un usuario para iniciar una conversación
+          </DialogDescription>
         </DialogHeader>
         <div className="relative mb-4">
           <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />

@@ -104,7 +104,7 @@ exports.createChat = async (req, res) => {
         // Verificar si el usuario existe
         const user = await User.findByPk(id);
         if (user) {
-          await chat.addParticipant(id);
+          await chat.addParticipant(user);
           console.log(`Usuario ${id} añadido como participante`);
         } else {
           console.error(`Usuario ${id} no encontrado, no se pudo añadir como participante`);

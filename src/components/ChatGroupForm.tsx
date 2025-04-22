@@ -13,6 +13,7 @@ export const ChatGroupForm = ({ onClose }: { onClose: () => void }) => {
   const { createChat } = useChat();
   const [groupName, setGroupName] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<SimpleUser[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
 
   const handleSelectUser = (user: SimpleUser) => {
     setSelectedUsers((prev) => [...prev, user]);
@@ -31,13 +32,28 @@ export const ChatGroupForm = ({ onClose }: { onClose: () => void }) => {
       });
       return;
     }
-    const participantIds = selectedUsers.map((u) => u.id);
-    await createChat(participantIds, groupName || undefined);
-    toast({
-      title: "Chat creado",
-      description: "Se ha creado el chat grupal correctamente"
-    });
-    onClose();
+    
+    setIsCreating(true);
+    try {
+      const participantIds = selectedUsers.map((u) => u.id);
+      console.log("Creando chat grupal con:", { participantIds, groupName });
+      await createChat(participantIds, groupName || undefined);
+      
+      toast({
+        title: "Chat creado",
+        description: "Se ha creado el chat grupal correctamente"
+      });
+      onClose();
+    } catch (error) {
+      console.error("Error al crear chat grupal:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo crear el chat grupal. Inténtalo de nuevo."
+      });
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (
@@ -86,12 +102,13 @@ export const ChatGroupForm = ({ onClose }: { onClose: () => void }) => {
       />
 
       <div className="flex justify-end space-x-2">
-        <Button variant="outline" onClick={onClose}>Cancelar</Button>
+        <Button variant="outline" onClick={onClose} disabled={isCreating}>Cancelar</Button>
         <Button
           onClick={handleCreateGroup}
           className="bg-wfc-purple hover:bg-wfc-purple-medium"
+          disabled={isCreating}
         >
-          Crear Chat
+          {isCreating ? "Creando..." : "Crear Chat"}
         </Button>
       </div>
     </div>

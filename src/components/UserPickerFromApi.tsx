@@ -35,9 +35,13 @@ export const UserPickerFromApi: React.FC<UserPickerFromApiProps> = ({
     async function fetchUsers() {
       setLoading(true);
       try {
+        console.log("Solicitando lista de usuarios desde API");
         const response = await apiRequest('/users/all');
+        console.log("Respuesta de API usuarios:", response);
+        
         if (response.success && Array.isArray(response.users)) {
           setUsers(response.users);
+          console.log(`Cargados ${response.users.length} usuarios correctamente`);
         } else {
           toast({
             variant: "destructive",
@@ -46,6 +50,7 @@ export const UserPickerFromApi: React.FC<UserPickerFromApiProps> = ({
           });
         }
       } catch (error) {
+        console.error("Error al cargar usuarios:", error);
         toast({
           variant: "destructive",
           title: "Error",
@@ -67,7 +72,7 @@ export const UserPickerFromApi: React.FC<UserPickerFromApiProps> = ({
 
   return (
     <div>
-      <label className="block font-semibold">{label}</label>
+      <label className="block font-semibold mb-1 text-sm">{label}</label>
       <div className="relative mt-1 mb-2">
         <Input
           placeholder="Buscar usuario por nombre..."
@@ -95,7 +100,9 @@ export const UserPickerFromApi: React.FC<UserPickerFromApiProps> = ({
                 >
                   <Avatar className="h-6 w-6 mr-2">
                     <AvatarImage src={user.photoURL || ''} />
-                    <AvatarFallback className="bg-wfc-purple-medium text-white">{user.name[0]?.toUpperCase() || "?"}</AvatarFallback>
+                    <AvatarFallback className="bg-wfc-purple-medium text-white text-xs">
+                      {user.name?.[0]?.toUpperCase() || "?"}
+                    </AvatarFallback>
                   </Avatar>
                   <span className="font-medium">{user.name}</span>
                   <span className="ml-auto text-xs text-gray-500">{user.role}</span>

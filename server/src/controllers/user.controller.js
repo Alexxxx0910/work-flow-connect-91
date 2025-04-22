@@ -117,7 +117,17 @@ exports.updateCurrentUser = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
   try {
     console.log("Obteniendo listado de todos los usuarios");
+    
+    // Excluir el usuario actual de la lista si está autenticado
+    let whereClause = {};
+    if (req.user && req.user.id) {
+      whereClause.id = {
+        [Op.ne]: req.user.id
+      };
+    }
+    
     const users = await User.findAll({
+      where: whereClause,
       attributes: ['id', 'name', 'email', 'role', 'photoURL', 'isOnline', 'lastSeen', 'bio', 'skills', 'hourlyRate']
     });
     
