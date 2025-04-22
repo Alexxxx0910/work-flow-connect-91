@@ -40,6 +40,8 @@ export const UserSelectDialog = ({
   const loadUsers = async () => {
     try {
       setLoading(true);
+      console.log("Cargando usuarios...");
+      
       const response = await apiRequest('/users/all');
       
       if (response && response.success && response.users) {
@@ -118,9 +120,9 @@ export const UserSelectDialog = ({
                   onClick={() => handleSelectUser(user)}
                 >
                   <Avatar>
-                    <AvatarImage src={user.photoURL} />
+                    <AvatarImage src={user.photoURL || ''} />
                     <AvatarFallback className="bg-wfc-purple-medium text-white">
-                      {user.name.charAt(0).toUpperCase()}
+                      {user.name ? user.name.charAt(0).toUpperCase() : '?'}
                     </AvatarFallback>
                   </Avatar>
                   <div>

@@ -12,14 +12,39 @@ import { toast } from '@/components/ui/use-toast';
  */
 export const getChats = async (): Promise<ChatType[]> => {
   try {
+    console.log("Solicitando chats al servidor...");
     const response = await apiRequest('/chats');
+    
     if (!response.success) {
+      console.error("Error en la respuesta del servidor:", response);
       throw new Error(response.message || 'Error al obtener chats');
     }
-    return response.chats || [];
+    
+    console.log("Chats recibidos del servidor:", response.chats?.length || 0);
+    
+    // Procesar y normalizar los datos de los chats
+    const chats = response.chats || [];
+    return chats.map((chat: any): ChatType => ({
+      id: chat.id,
+      name: chat.name || '',
+      participants: chat.participants.map((p: any) => p.id),
+      messages: (chat.messages || []).map((m: any) => ({
+        id: m.id,
+        senderId: m.userId,
+        content: m.content,
+        timestamp: new Date(m.createdAt).getTime()
+      })),
+      isGroup: chat.isGroup,
+      lastMessage: chat.messages && chat.messages.length > 0 ? {
+        id: chat.messages[0].id,
+        senderId: chat.messages[0].userId,
+        content: chat.messages[0].content,
+        timestamp: new Date(chat.messages[0].createdAt).getTime()
+      } : undefined
+    }));
   } catch (error) {
     console.error('Error al obtener chats:', error);
-    // Mostrar toast solo si es un error que no sea 404 (no hay chats)
+    // Solo mostrar toast si es un error que no sea 404 (no hay chats)
     if (error instanceof Error && !error.message.includes('404')) {
       toast({
         variant: "destructive",
@@ -54,7 +79,18 @@ export const createChat = async (participantIds: string[], name = ""): Promise<C
       throw new Error(response.message || 'Error al crear chat');
     }
     
-    return response.chat;
+    console.log("Respuesta del servidor al crear chat:", response);
+    
+    // Procesar y normalizar los datos del chat creado
+    const chat = response.chat;
+    return {
+      id: chat.id,
+      name: chat.name || '',
+      participants: chat.participants.map((p: any) => p.id),
+      messages: [],
+      isGroup: chat.isGroup,
+      lastMessage: undefined
+    };
   } catch (error) {
     console.error('Error al crear chat:', error);
     throw error;
@@ -78,7 +114,14 @@ export const sendMessage = async (chatId: string, content: string): Promise<Mess
       throw new Error(response.message || 'Error al enviar mensaje');
     }
 
-    return response.chatMessage;
+    // Normalizar el mensaje recibido
+    const message = response.chatMessage;
+    return {
+      id: message.id,
+      senderId: message.userId,
+      content: message.content,
+      timestamp: new Date(message.createdAt).getTime()
+    };
   } catch (error) {
     console.error('Error al enviar mensaje:', error);
     throw error;
@@ -122,7 +165,27 @@ export const getChatById = async (chatId: string): Promise<ChatType | null> => {
     if (!response.success) {
       throw new Error(response.message || 'Error al obtener chat');
     }
-    return response.chat;
+    
+    // Normalizar el chat recibido
+    const chat = response.chat;
+    return {
+      id: chat.id,
+      name: chat.name || '',
+      participants: chat.participants.map((p: any) => p.id),
+      messages: (chat.messages || []).map((m: any) => ({
+        id: m.id,
+        senderId: m.userId,
+        content: m.content,
+        timestamp: new Date(m.createdAt).getTime()
+      })),
+      isGroup: chat.isGroup,
+      lastMessage: chat.messages && chat.messages.length > 0 ? {
+        id: chat.messages[0].id,
+        senderId: chat.messages[0].userId,
+        content: chat.messages[0].content,
+        timestamp: new Date(chat.messages[0].createdAt).getTime()
+      } : undefined
+    };
   } catch (error) {
     console.error('Error al obtener chat:', error);
     return null;

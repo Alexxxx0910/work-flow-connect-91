@@ -116,9 +116,12 @@ exports.updateCurrentUser = async (req, res) => {
  */
 exports.getAllUsers = async (req, res) => {
   try {
+    console.log("Obteniendo listado de todos los usuarios");
     const users = await User.findAll({
       attributes: ['id', 'name', 'email', 'role', 'photoURL', 'isOnline', 'lastSeen', 'bio', 'skills', 'hourlyRate']
     });
+    
+    console.log(`Encontrados ${users.length} usuarios`);
     
     return res.status(200).json({
       success: true,

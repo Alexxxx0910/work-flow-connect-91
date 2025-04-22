@@ -43,7 +43,7 @@ exports.createChat = async (req, res) => {
             model: User,
             as: 'participants',
             where: { id: userId },
-            attributes: ['id', 'name', 'photoURL']
+            through: { attributes: [] }
           }
         ]
       });
@@ -61,7 +61,8 @@ exports.createChat = async (req, res) => {
               {
                 model: User,
                 as: 'participants',
-                attributes: ['id', 'name', 'photoURL', 'isOnline', 'lastSeen']
+                attributes: ['id', 'name', 'photoURL', 'isOnline', 'lastSeen'],
+                through: { attributes: [] }
               },
               {
                 model: Message,
@@ -119,7 +120,8 @@ exports.createChat = async (req, res) => {
         {
           model: User,
           as: 'participants',
-          attributes: ['id', 'name', 'photoURL', 'isOnline', 'lastSeen']
+          attributes: ['id', 'name', 'photoURL', 'isOnline', 'lastSeen'],
+          through: { attributes: [] }
         }
       ]
     });
@@ -147,6 +149,8 @@ exports.getChats = async (req, res) => {
   try {
     const userId = req.user.id;
     
+    console.log("Buscando chats para el usuario:", userId);
+    
     // Buscar todos los chats donde el usuario es participante
     const chats = await Chat.findAll({
       include: [
@@ -170,15 +174,19 @@ exports.getChats = async (req, res) => {
           ]
         }
       ],
-      order: [['lastMessageAt', 'DESC']],
-      where: {
-        '$participants.id$': userId
-      }
+      order: [['lastMessageAt', 'DESC']]
     });
+    
+    // Filtrar para incluir solo chats donde el usuario es participante
+    const userChats = chats.filter(chat => {
+      return chat.participants.some(participant => participant.id === userId);
+    });
+    
+    console.log(`Se encontraron ${userChats.length} chats para el usuario ${userId}`);
     
     return res.status(200).json({
       success: true,
-      chats
+      chats: userChats
     });
     
   } catch (error) {
