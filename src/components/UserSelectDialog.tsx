@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { useData } from '@/contexts/DataContext';
-import { useChat } from '@/contexts/ChatContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -41,18 +40,17 @@ export const UserSelectDialog = ({
   const loadUsers = async () => {
     try {
       setLoading(true);
-      // Usamos la ruta correcta para obtener todos los usuarios
       const response = await apiRequest('/users/all');
       
       if (response && response.success && response.users) {
-        console.log("Usuarios cargados:", response.users);
+        console.log("Usuarios cargados:", response.users.length);
         setUsers(response.users);
       } else {
-        console.log("No se encontraron usuarios en la respuesta:", response);
+        console.error("Formato de respuesta inesperado:", response);
         toast({
           variant: "destructive",
           title: "Error",
-          description: "Formato de respuesta inesperado al cargar usuarios"
+          description: "No se pudieron cargar los usuarios"
         });
         setUsers([]);
       }

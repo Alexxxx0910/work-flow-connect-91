@@ -26,11 +26,16 @@ Comment.hasMany(Reply, { foreignKey: 'commentId' });
 // Asociaciones de chat
 Chat.belongsToMany(User, { 
   through: 'ChatParticipants', 
-  as: 'participants'
+  as: 'participants',
+  foreignKey: 'chatId',
+  otherKey: 'userId'
 });
+
 User.belongsToMany(Chat, { 
   through: 'ChatParticipants', 
-  as: 'chats'
+  as: 'chats',
+  foreignKey: 'userId',
+  otherKey: 'chatId'
 });
 
 // Asociaciones de mensajes
@@ -38,9 +43,11 @@ Message.belongsTo(User, {
   foreignKey: 'userId', 
   as: 'user'
 });
+
 Message.belongsTo(Chat, { 
   foreignKey: 'chatId'
 });
+
 Chat.hasMany(Message, { 
   foreignKey: 'chatId', 
   as: 'messages'

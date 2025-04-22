@@ -1,3 +1,4 @@
+
 const { User, Job } = require('../models');
 const bcrypt = require('bcrypt');
 const { Op } = require('sequelize');
@@ -9,7 +10,7 @@ exports.getUserProfile = async (req, res) => {
   try {
     const { id } = req.params;
     const user = await User.findByPk(id, {
-      attributes: ['id', 'name', 'email', 'role', 'photoURL', 'isOnline', 'lastSeen']
+      attributes: ['id', 'name', 'email', 'role', 'photoURL', 'isOnline', 'lastSeen', 'bio', 'skills', 'hourlyRate']
     });
 
     if (!user) {
@@ -39,7 +40,7 @@ exports.getUserProfile = async (req, res) => {
 exports.getCurrentUser = async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
-      attributes: ['id', 'name', 'email', 'role', 'photoURL', 'isOnline', 'lastSeen']
+      attributes: ['id', 'name', 'email', 'role', 'photoURL', 'isOnline', 'lastSeen', 'bio', 'skills', 'hourlyRate']
     });
 
     if (!user) {
@@ -116,7 +117,7 @@ exports.updateCurrentUser = async (req, res) => {
 exports.getAllUsers = async (req, res) => {
   try {
     const users = await User.findAll({
-      attributes: ['id', 'name', 'email', 'role', 'photoURL', 'isOnline', 'lastSeen']
+      attributes: ['id', 'name', 'email', 'role', 'photoURL', 'isOnline', 'lastSeen', 'bio', 'skills', 'hourlyRate']
     });
     
     return res.status(200).json({
@@ -149,7 +150,7 @@ exports.searchUsers = async (req, res) => {
     
     const users = await User.findAll({
       where: whereClause,
-      attributes: ['id', 'name', 'email', 'role', 'photoURL', 'isOnline', 'lastSeen']
+      attributes: ['id', 'name', 'email', 'role', 'photoURL', 'isOnline', 'lastSeen', 'bio', 'skills', 'hourlyRate']
     });
     
     return res.status(200).json({

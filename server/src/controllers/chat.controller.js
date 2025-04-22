@@ -1,4 +1,3 @@
-
 const { Chat, User, Message } = require('../models');
 const { Op } = require('sequelize');
 
@@ -21,38 +20,42 @@ exports.createChat = async (req, res) => {
     }
     
     // Asegurarse de que el usuario actual está incluido en los participantes
-    if (!participantIds.includes(userId)) {
-      participantIds.push(userId);
-    }
+    const allParticipantIds = [...new Set([...participantIds, userId])];
     
     // Para chats privados (no grupos), verificar si ya existe un chat entre los usuarios
-    if (!isGroup && participantIds.length === 2) {
+    if (!isGroup && allParticipantIds.length === 2) {
+      const otherUserId = allParticipantIds.find(id => id !== userId);
+      
+      // Verificar si el otro usuario existe
+      const otherUser = await User.findByPk(otherUserId);
+      if (!otherUser) {
+        return res.status(404).json({
+          success: false,
+          message: 'Usuario no encontrado'
+        });
+      }
+      
       // Buscar todos los chats privados del usuario actual
       const userChats = await Chat.findAll({
+        where: { isGroup: false },
         include: [
           {
             model: User,
             as: 'participants',
-            where: {
-              id: userId
-            }
+            where: { id: userId },
+            attributes: ['id', 'name', 'photoURL']
           }
-        ],
-        where: { isGroup: false }
+        ]
       });
       
-      // Filtrar para encontrar chats donde el otro participante también está presente
+      // Verificar si existe un chat privado con el otro usuario
       for (const chat of userChats) {
+        // Obtener todos los participantes de este chat
         const participants = await chat.getParticipants();
-        
         const participantIds = participants.map(p => p.id);
-        console.log("Participantes en chat existente:", participantIds);
         
-        if (participants.length === 2 && 
-            participantIds.includes(req.body.participantIds[0]) && 
-            participantIds.includes(userId)) {
-          
-          // Ya existe un chat privado entre estos usuarios, devolverlo
+        // Si el otro usuario ya está en este chat privado, devolverlo
+        if (participants.length === 2 && participantIds.includes(otherUserId)) {
           const chatWithDetails = await Chat.findByPk(chat.id, {
             include: [
               {
@@ -88,16 +91,23 @@ exports.createChat = async (req, res) => {
     // Crear nuevo chat
     const chat = await Chat.create({
       name: isGroup ? name : '',
-      isGroup: !!isGroup
+      isGroup: !!isGroup,
+      lastMessageAt: new Date()
     });
     
     console.log("Nuevo chat creado:", chat.id);
     
     // Añadir participantes
-    for (const id of participantIds) {
+    for (const id of allParticipantIds) {
       try {
-        await chat.addParticipant(id);
-        console.log(`Usuario ${id} añadido como participante`);
+        // Verificar si el usuario existe
+        const user = await User.findByPk(id);
+        if (user) {
+          await chat.addParticipant(id);
+          console.log(`Usuario ${id} añadido como participante`);
+        } else {
+          console.error(`Usuario ${id} no encontrado, no se pudo añadir como participante`);
+        }
       } catch (error) {
         console.error(`Error al añadir participante ${id}:`, error);
       }
@@ -143,7 +153,8 @@ exports.getChats = async (req, res) => {
         {
           model: User,
           as: 'participants',
-          attributes: ['id', 'name', 'photoURL', 'isOnline', 'lastSeen']
+          attributes: ['id', 'name', 'photoURL', 'isOnline', 'lastSeen'],
+          through: { attributes: [] }
         },
         {
           model: Message,
@@ -160,30 +171,9 @@ exports.getChats = async (req, res) => {
         }
       ],
       order: [['lastMessageAt', 'DESC']],
-      // Filtrar chats donde el usuario actual es participante
-      include: [
-        {
-          model: User,
-          as: 'participants',
-          where: {
-            id: userId
-          },
-          attributes: ['id', 'name', 'photoURL', 'isOnline', 'lastSeen']
-        },
-        {
-          model: Message,
-          as: 'messages',
-          limit: 1,
-          order: [['createdAt', 'DESC']],
-          include: [
-            {
-              model: User,
-              as: 'user',
-              attributes: ['id', 'name', 'photoURL']
-            }
-          ]
-        }
-      ]
+      where: {
+        '$participants.id$': userId
+      }
     });
     
     return res.status(200).json({

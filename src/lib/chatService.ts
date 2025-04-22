@@ -19,6 +19,14 @@ export const getChats = async (): Promise<ChatType[]> => {
     return response.chats || [];
   } catch (error) {
     console.error('Error al obtener chats:', error);
+    // Mostrar toast solo si es un error que no sea 404 (no hay chats)
+    if (error instanceof Error && !error.message.includes('404')) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudieron cargar los chats. Por favor, inténtalo de nuevo."
+      });
+    }
     // No lanzar error si no hay chats, solo devolver array vacío
     return [];
   }
@@ -146,4 +154,11 @@ export const setupChatListener = (callback: (chats: ChatType[]) => void) => {
       listeners.splice(index, 1);
     }
   };
+};
+
+// Función para actualizar manualmente todos los listeners cuando hay cambios
+export const updateChatListeners = (chats: ChatType[]) => {
+  listeners.forEach(listener => {
+    listener(chats);
+  });
 };
