@@ -1,15 +1,19 @@
 
 import React, { useState, useEffect } from 'react';
-import { useData } from '@/contexts/DataContext';
-import { useAuth } from '@/contexts/AuthContext';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Search, Loader2 } from 'lucide-react';
-import { UserType } from '@/contexts/DataContext';
 import { apiRequest } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
+
+interface UserType {
+  id: string;
+  name: string;
+  photoURL: string;
+  role: string;
+}
 
 interface UserSelectDialogProps {
   open: boolean;
@@ -17,6 +21,7 @@ interface UserSelectDialogProps {
   title?: string;
   onUserSelect?: (userId: string) => void;
   excludeUsers?: string[];
+  currentUserId?: string;
 }
 
 export const UserSelectDialog = ({
@@ -24,72 +29,63 @@ export const UserSelectDialog = ({
   onOpenChange,
   title = "Seleccionar usuario",
   onUserSelect,
-  excludeUsers = []
+  excludeUsers = [],
+  currentUserId,
 }: UserSelectDialogProps) => {
-  const { currentUser } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(false);
-  
+
   useEffect(() => {
-    if (open) {
-      loadUsers();
-    }
+    if (open) fetchUsers();
+    // eslint-disable-next-line
   }, [open]);
 
-  const loadUsers = async () => {
+  async function fetchUsers() {
+    setLoading(true);
     try {
-      setLoading(true);
-      console.log("Cargando usuarios...");
-      
       const response = await apiRequest('/users/all');
-      
-      if (response && response.success && response.users) {
-        console.log("Usuarios cargados:", response.users.length);
+      if (response.success && Array.isArray(response.users)) {
         setUsers(response.users);
       } else {
-        console.error("Formato de respuesta inesperado:", response);
+        setUsers([]);
         toast({
           variant: "destructive",
           title: "Error",
           description: "No se pudieron cargar los usuarios"
         });
-        setUsers([]);
       }
-    } catch (error) {
-      console.error('Error al cargar usuarios:', error);
+    } catch {
+      setUsers([]);
       toast({
         variant: "destructive",
         title: "Error",
         description: "No se pudieron cargar los usuarios"
       });
-      setUsers([]);
     } finally {
       setLoading(false);
     }
-  };
+  }
   
-  const filteredUsers = users.filter(user => 
-    user.id !== currentUser?.id && 
+  const filteredUsers = users.filter(user =>
+    user.id !== currentUserId &&
     !excludeUsers.includes(user.id) &&
     user.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
-  
+
   const handleSelectUser = (user: UserType) => {
     if (onUserSelect) {
-      console.log("Usuario seleccionado:", user);
       onUserSelect(user.id);
       onOpenChange(false);
     }
   };
-  
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        
         <div className="relative mb-4">
           <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
           <Input
@@ -99,7 +95,6 @@ export const UserSelectDialog = ({
             className="pl-8"
           />
         </div>
-        
         <ScrollArea className="h-[300px]">
           {loading ? (
             <div className="flex items-center justify-center h-full">
@@ -107,8 +102,8 @@ export const UserSelectDialog = ({
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="p-4 text-center text-gray-500">
-              {users.length > 0 
-                ? "No se encontraron usuarios con ese nombre" 
+              {users.length > 0
+                ? "No se encontraron usuarios con ese nombre"
                 : "No hay usuarios disponibles"}
             </div>
           ) : (
