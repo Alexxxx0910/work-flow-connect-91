@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useChat } from '@/contexts/ChatContext';
+import { useAuth } from '@/contexts/AuthContext';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Check, X } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
@@ -11,6 +12,7 @@ import { UserPickerFromApi, SimpleUser } from './UserPickerFromApi';
 
 export const ChatGroupForm = ({ onClose }: { onClose: () => void }) => {
   const { createChat } = useChat();
+  const { isLoggedIn } = useAuth();
   const [groupName, setGroupName] = useState('');
   const [selectedUsers, setSelectedUsers] = useState<SimpleUser[]>([]);
   const [isCreating, setIsCreating] = useState(false);
@@ -24,6 +26,15 @@ export const ChatGroupForm = ({ onClose }: { onClose: () => void }) => {
   };
 
   const handleCreateGroup = async () => {
+    if (!isLoggedIn) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Debes iniciar sesión para crear un chat",
+      });
+      return;
+    }
+    
     if (selectedUsers.length < 1) {
       toast({
         variant: "destructive",
@@ -55,6 +66,21 @@ export const ChatGroupForm = ({ onClose }: { onClose: () => void }) => {
       setIsCreating(false);
     }
   };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="p-4 text-center">
+        <p>Debes iniciar sesión para crear un chat grupal</p>
+        <Button 
+          className="mt-4"
+          variant="outline"
+          onClick={onClose}
+        >
+          Cerrar
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4">
@@ -106,7 +132,7 @@ export const ChatGroupForm = ({ onClose }: { onClose: () => void }) => {
         <Button
           onClick={handleCreateGroup}
           className="bg-wfc-purple hover:bg-wfc-purple-medium"
-          disabled={isCreating}
+          disabled={isCreating || selectedUsers.length === 0}
         >
           {isCreating ? "Creando..." : "Crear Chat"}
         </Button>

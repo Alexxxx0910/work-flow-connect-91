@@ -7,6 +7,8 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Search, Loader2 } from 'lucide-react';
 import { apiRequest } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
+import { Button } from '@/components/ui/button';
 
 interface UserType {
   id: string;
@@ -35,13 +37,19 @@ export const UserSelectDialog = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [users, setUsers] = useState<UserType[]>([]);
   const [loading, setLoading] = useState(false);
+  const { isLoggedIn } = useAuth();
 
   useEffect(() => {
-    if (open) fetchUsers();
+    if (open && isLoggedIn) fetchUsers();
     // eslint-disable-next-line
-  }, [open]);
+  }, [open, isLoggedIn]);
 
   async function fetchUsers() {
+    if (!isLoggedIn) {
+      console.log("Usuario no autenticado, no se cargarán usuarios");
+      return;
+    }
+    
     setLoading(true);
     try {
       console.log("UserSelectDialog: Solicitando lista de usuarios");
@@ -53,20 +61,11 @@ export const UserSelectDialog = ({
         console.log(`UserSelectDialog: Cargados ${response.users.length} usuarios`);
       } else {
         setUsers([]);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se pudieron cargar los usuarios"
-        });
+        console.warn("No hay usuarios disponibles o hay un error en la API");
       }
     } catch (error) {
       console.error("Error al cargar usuarios:", error);
       setUsers([]);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "No se pudieron cargar los usuarios"
-      });
     } finally {
       setLoading(false);
     }
@@ -95,49 +94,59 @@ export const UserSelectDialog = ({
             Selecciona un usuario para iniciar una conversación
           </DialogDescription>
         </DialogHeader>
-        <div className="relative mb-4">
-          <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-          <Input
-            placeholder="Buscar usuarios..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-8"
-          />
-        </div>
-        <ScrollArea className="h-[300px]">
-          {loading ? (
-            <div className="flex items-center justify-center h-full">
-              <Loader2 className="h-6 w-6 animate-spin text-wfc-purple" />
+        
+        {!isLoggedIn ? (
+          <div className="p-4 text-center">
+            <p className="mb-4">Debes iniciar sesión para ver y seleccionar usuarios</p>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Cerrar</Button>
+          </div>
+        ) : (
+          <>
+            <div className="relative mb-4">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <Input
+                placeholder="Buscar usuarios..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-8"
+              />
             </div>
-          ) : filteredUsers.length === 0 ? (
-            <div className="p-4 text-center text-gray-500">
-              {users.length > 0
-                ? "No se encontraron usuarios con ese nombre"
-                : "No hay usuarios disponibles"}
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {filteredUsers.map((user) => (
-                <div
-                  key={user.id}
-                  className="p-2 flex items-center space-x-3 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer rounded-md"
-                  onClick={() => handleSelectUser(user)}
-                >
-                  <Avatar>
-                    <AvatarImage src={user.photoURL || ''} />
-                    <AvatarFallback className="bg-wfc-purple-medium text-white">
-                      {user.name ? user.name.charAt(0).toUpperCase() : '?'}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <p className="font-medium">{user.name}</p>
-                    <p className="text-sm text-gray-500">{user.role}</p>
-                  </div>
+            <ScrollArea className="h-[300px]">
+              {loading ? (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-6 w-6 animate-spin text-wfc-purple" />
                 </div>
-              ))}
-            </div>
-          )}
-        </ScrollArea>
+              ) : filteredUsers.length === 0 ? (
+                <div className="p-4 text-center text-gray-500">
+                  {users.length > 0
+                    ? "No se encontraron usuarios con ese nombre"
+                    : "No hay usuarios disponibles"}
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  {filteredUsers.map((user) => (
+                    <div
+                      key={user.id}
+                      className="p-2 flex items-center space-x-3 hover:bg-gray-100 dark:hover:bg-gray-800 cursor-pointer rounded-md"
+                      onClick={() => handleSelectUser(user)}
+                    >
+                      <Avatar>
+                        <AvatarImage src={user.photoURL || ''} />
+                        <AvatarFallback className="bg-wfc-purple-medium text-white">
+                          {user.name ? user.name.charAt(0).toUpperCase() : '?'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-medium">{user.name}</p>
+                        <p className="text-sm text-gray-500">{user.role}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

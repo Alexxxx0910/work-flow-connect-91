@@ -6,6 +6,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Loader2, User } from 'lucide-react';
 import { apiRequest } from '@/lib/api';
 import { toast } from '@/components/ui/use-toast';
+import { useAuth } from '@/contexts/AuthContext';
 
 export type SimpleUser = {
   id: string;
@@ -30,8 +31,14 @@ export const UserPickerFromApi: React.FC<UserPickerFromApiProps> = ({
   const [users, setUsers] = useState<SimpleUser[]>([]);
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
+  const { currentUser, isLoggedIn } = useAuth();
 
   useEffect(() => {
+    if (!isLoggedIn) {
+      console.log("Usuario no autenticado, no se cargarán usuarios");
+      return;
+    }
+    
     async function fetchUsers() {
       setLoading(true);
       try {
@@ -43,31 +50,27 @@ export const UserPickerFromApi: React.FC<UserPickerFromApiProps> = ({
           setUsers(response.users);
           console.log(`Cargados ${response.users.length} usuarios correctamente`);
         } else {
-          toast({
-            variant: "destructive",
-            title: "Error cargando usuarios",
-            description: "No se pudieron cargar los usuarios desde la base de datos.",
-          });
+          // Si no hay usuarios en el backend, mostrar mensaje
+          setUsers([]);
+          console.warn("No se pudieron cargar los usuarios desde la API");
         }
       } catch (error) {
         console.error("Error al cargar usuarios:", error);
-        toast({
-          variant: "destructive",
-          title: "Error",
-          description: "No se pudo comunicar con el backend."
-        });
+        // Usar datos vacíos si no se pueden cargar usuarios
+        setUsers([]);
       } finally {
         setLoading(false);
       }
     }
     fetchUsers();
-  }, []);
+  }, [isLoggedIn]);
 
   const filteredUsers = users.filter(
     (user) =>
       !excludeIds.includes(user.id) &&
       !selectedUsers.some((sel) => sel.id === user.id) &&
-      user.name.toLowerCase().includes(query.toLowerCase())
+      user.name.toLowerCase().includes(query.toLowerCase()) &&
+      (currentUser ? user.id !== currentUser.id : true)
   );
 
   return (
@@ -87,8 +90,16 @@ export const UserPickerFromApi: React.FC<UserPickerFromApiProps> = ({
           <div className="flex items-center justify-center py-6">
             <Loader2 className="animate-spin h-6 w-6 text-wfc-purple" />
           </div>
+        ) : !isLoggedIn ? (
+          <div className="p-2 text-gray-500 text-sm">
+            Debes iniciar sesión para ver usuarios
+          </div>
         ) : filteredUsers.length === 0 ? (
-          <div className="p-2 text-gray-500 text-sm">No se encontraron usuarios</div>
+          <div className="p-2 text-gray-500 text-sm">
+            {users.length === 0
+              ? "No se encontraron usuarios disponibles"
+              : "No se encontraron usuarios con ese filtro"}
+          </div>
         ) : (
           <ul>
             {filteredUsers.map(user => (

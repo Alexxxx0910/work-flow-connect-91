@@ -49,7 +49,7 @@ export const getChats = async (): Promise<ChatType[]> => {
       toast({
         variant: "destructive",
         title: "Error",
-        description: "No se pudieron cargar los chats. Por favor, inténtalo de nuevo."
+        description: "No se pudieron cargar los chats. Asegúrate de haber iniciado sesión."
       });
     }
     // No lanzar error si no hay chats, solo devolver array vacío
@@ -204,6 +204,7 @@ export const setupChatListener = (callback: (chats: ChatType[]) => void) => {
   
   // Llamar inmediatamente con los datos actuales
   getChats().then(chats => {
+    console.log("Listener inicial: obtenidos", chats.length, "chats");
     callback(chats);
   }).catch(error => {
     console.error("Error al obtener chats iniciales:", error);
@@ -221,7 +222,9 @@ export const setupChatListener = (callback: (chats: ChatType[]) => void) => {
 
 // Función para actualizar manualmente todos los listeners cuando hay cambios
 export const updateChatListeners = (chats: ChatType[]) => {
+  console.log("Actualizando listeners con", chats.length, "chats");
   listeners.forEach(listener => {
     listener(chats);
   });
 };
+
