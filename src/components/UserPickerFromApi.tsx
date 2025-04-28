@@ -1,99 +1,89 @@
 
 import { useState, useEffect } from 'react';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Search, Plus } from 'lucide-react';
+import { useData } from '@/contexts/DataContext';
 import { useAuth } from '@/contexts/AuthContext';
-import axios from 'axios';
 
-export interface SimpleUser {
+export type SimpleUser = {
   id: string;
   name: string;
   photoURL?: string;
-}
+};
 
-interface UserPickerProps {
+type UserPickerFromApiProps = {
   selectedUsers: SimpleUser[];
   onSelect: (user: SimpleUser) => void;
-}
+};
 
-export const UserPickerFromApi = ({ selectedUsers, onSelect }: UserPickerProps) => {
+export const UserPickerFromApi = ({ selectedUsers, onSelect }: UserPickerFromApiProps) => {
+  const { users } = useData();
+  const { currentUser } = useAuth();
+  
   const [searchTerm, setSearchTerm] = useState('');
-  const [users, setUsers] = useState<SimpleUser[]>([]);
-  const [loading, setLoading] = useState(false);
-  const { token, currentUser } = useAuth();
+  const [availableUsers, setAvailableUsers] = useState<SimpleUser[]>([]);
 
   useEffect(() => {
-    if (token) {
-      loadUsers();
-    }
-  }, [token]);
-
-  const loadUsers = async () => {
-    if (!token) return;
+    // Filtrar usuarios ya seleccionados y el usuario actual
+    const filteredUsers = users.filter(user => 
+      !selectedUsers.some(selected => selected.id === user.id) && 
+      (!currentUser || user.id !== currentUser.id)
+    );
     
-    setLoading(true);
-    try {
-      const response = await axios.get(`http://localhost:5000/api/users/all`, {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
-      
-      if (response.data.success) {
-        // Filtrar al usuario actual y los usuarios ya seleccionados
-        setUsers(response.data.users.filter((user: SimpleUser) => 
-          user.id !== currentUser?.id &&
-          !selectedUsers.some(selected => selected.id === user.id)
-        ));
-      }
-    } catch (error) {
-      console.error("Error al cargar usuarios:", error);
-    } finally {
-      setLoading(false);
+    if (!searchTerm) {
+      setAvailableUsers(filteredUsers);
+      return;
     }
-  };
 
-  const filteredUsers = users.filter(user => 
-    user.name.toLowerCase().includes(searchTerm.toLowerCase()) &&
-    !selectedUsers.some(selected => selected.id === user.id)
-  );
+    const filtered = filteredUsers.filter(user => 
+      user.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+    
+    setAvailableUsers(filtered);
+  }, [searchTerm, users, selectedUsers, currentUser]);
 
   return (
-    <div>
-      <Input
-        placeholder="Buscar usuarios..."
-        value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
-        className="mb-2"
-      />
+    <div className="space-y-2">
+      <Label htmlFor="user-search">Añadir participantes</Label>
+      <div className="relative">
+        <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+        <Input
+          id="user-search"
+          placeholder="Buscar usuarios"
+          value={searchTerm}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          className="pl-8"
+        />
+      </div>
       
-      <div className="max-h-48 overflow-y-auto">
-        {loading ? (
-          <p className="text-center text-sm text-muted-foreground p-2">Cargando usuarios...</p>
-        ) : filteredUsers.length > 0 ? (
-          <div className="space-y-1">
-            {filteredUsers.map((user) => (
-              <div
-                key={user.id}
-                className="flex items-center gap-2 p-2 rounded-md hover:bg-accent cursor-pointer"
-                onClick={() => onSelect(user)}
-              >
-                <Avatar className="h-8 w-8">
+      {availableUsers.length > 0 ? (
+        <div className="max-h-[200px] overflow-y-auto border rounded-md">
+          {availableUsers.map(user => (
+            <div
+              key={user.id}
+              onClick={() => onSelect(user)}
+              className="flex items-center justify-between p-2 hover:bg-accent cursor-pointer"
+            >
+              <div className="flex items-center gap-2">
+                <Avatar className="h-6 w-6">
                   <AvatarImage src={user.photoURL} alt={user.name} />
                   <AvatarFallback className="bg-wfc-purple-medium text-white text-xs">
-                    {user.name.charAt(0).toUpperCase()}
+                    {user.name?.charAt(0).toUpperCase()}
                   </AvatarFallback>
                 </Avatar>
                 <span className="text-sm">{user.name}</span>
               </div>
-            ))}
-          </div>
-        ) : (
-          <p className="text-center text-sm text-muted-foreground p-2">
-            {searchTerm ? "No se encontraron usuarios" : "No hay usuarios disponibles"}
-          </p>
-        )}
-      </div>
+              <Plus className="h-4 w-4" />
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="border rounded-md p-3 text-center text-muted-foreground text-sm">
+          {searchTerm ? "No se encontraron usuarios" : "No hay más usuarios disponibles"}
+        </div>
+      )}
     </div>
   );
 };

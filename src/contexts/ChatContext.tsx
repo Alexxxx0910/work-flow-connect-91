@@ -1,315 +1,509 @@
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthContext';
 import { toast } from '@/components/ui/use-toast';
-import {
-  fetchChats,
-  fetchChat,
-  createChat as createChatApi,
-  sendMessage as sendMessageApi,
-  initializeSocket,
-  disconnectSocket,
-  onNewMessage,
-  onUserTyping,
-  onMessagesRead,
-  onUserStatusChange,
-  emitSendMessage,
-  emitTyping,
-  emitMarkRead,
-  emitJoinChat
-} from '@/api/chatApi';
+import { initializeSocket, getSocket, emitTyping, emitMarkRead, emitJoinChat } from '@/api/chatApi';
+import { useData } from './DataContext';
+import { mockChats, generateNewChat } from '@/data/mockData';
+import { USE_MOCK_DATA } from '@/lib/apiUrl';
 
-// Definición de tipos
-export interface UserType {
+// Tipos
+export type MessageType = {
+  id: string;
+  content: string;
+  userId: string | null;
+  chatId: string;
+  createdAt: Date;
+  read: boolean;
+  userName?: string;
+  userPhoto?: string;
+};
+
+export type ParticipantType = {
   id: string;
   name: string;
   photoURL?: string;
   isOnline?: boolean;
   lastSeen?: Date;
-}
+};
 
-export interface MessageType {
-  id: string;
-  content: string;
-  chatId: string;
-  userId: string;
-  user?: UserType;
-  read: boolean;
-  createdAt: Date;
-}
-
-export interface ChatType {
+export type ChatType = {
   id: string;
   name: string;
   isGroup: boolean;
   lastMessageAt: Date;
-  participants: UserType[];
+  participants: ParticipantType[];
   messages: MessageType[];
-}
+};
 
-interface ChatContextType {
+type ChatContextType = {
   chats: ChatType[];
   currentChat: ChatType | null;
   loadingChats: boolean;
-  loadingMessages: boolean;
   sendingMessage: boolean;
-  typingUsers: { [chatId: string]: string[] };
+  typingUsers: Record<string, string[]>;
   fetchUserChats: () => Promise<void>;
-  selectChat: (chatId: string) => Promise<void>;
-  createChat: (participantIds: string[], name?: string, isGroup?: boolean) => Promise<void>;
+  selectChat: (chatId: string) => void;
   sendMessage: (content: string) => Promise<void>;
+  createChat: (participantIds: string[], name?: string, isGroup?: boolean) => Promise<void>;
   handleTyping: (chatId: string) => void;
-}
+  markMessagesRead: (chatId: string) => Promise<void>;
+};
 
-const ChatContext = createContext<ChatContextType>({
-  chats: [],
-  currentChat: null,
-  loadingChats: false,
-  loadingMessages: false,
-  sendingMessage: false,
-  typingUsers: {},
-  fetchUserChats: async () => {},
-  selectChat: async () => {},
-  createChat: async () => {},
-  sendMessage: async () => {},
-  handleTyping: () => {},
-});
+const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { currentUser, token } = useAuth();
+  const { currentUser, token, isLoggedIn } = useAuth();
+  const { addNewChat, updateChat } = useData();
+  
   const [chats, setChats] = useState<ChatType[]>([]);
   const [currentChat, setCurrentChat] = useState<ChatType | null>(null);
-  const [loadingChats, setLoadingChats] = useState(false);
-  const [loadingMessages, setLoadingMessages] = useState(false);
-  const [sendingMessage, setSendingMessage] = useState(false);
-  const [typingUsers, setTypingUsers] = useState<{ [chatId: string]: string[] }>({});
-
-  // Inicializar socket cuando el usuario inicia sesión
+  const [loadingChats, setLoadingChats] = useState<boolean>(false);
+  const [sendingMessage, setSendingMessage] = useState<boolean>(false);
+  const [typingUsers, setTypingUsers] = useState<Record<string, string[]>>({});
+  
+  // Inicializar socket cuando hay usuario autenticado
   useEffect(() => {
-    if (currentUser && token) {
-      initializeSocket(token);
-
-      // Configurar listeners de socket
-      onNewMessage((message) => {
-        setChats((prevChats) => {
-          return prevChats.map((chat) => {
+    if (isLoggedIn && token) {
+      const socket = initializeSocket(token);
+      
+      // Manejar nuevos mensajes
+      socket.on('new_message', (message: MessageType) => {
+        setChats(prevChats => {
+          const updatedChats = prevChats.map(chat => {
             if (chat.id === message.chatId) {
-              // Añadir mensaje al chat actual si está abierto
-              if (currentChat?.id === message.chatId) {
-                setCurrentChat({
-                  ...currentChat,
-                  messages: [...currentChat.messages, message],
-                  lastMessageAt: new Date(),
-                });
-                emitMarkRead(message.chatId); // Marcar como leído si es el chat actual
+              const isCurrentChat = currentChat?.id === chat.id;
+              
+              // Si es el chat actual, marcar como leído inmediatamente
+              if (isCurrentChat) {
+                emitMarkRead(chat.id);
               }
+              
               return {
                 ...chat,
-                messages: [...chat.messages, message],
-                lastMessageAt: new Date(),
+                messages: [message, ...chat.messages],
+                lastMessageAt: message.createdAt,
+              };
+            }
+            return chat;
+          });
+          
+          // Ordenar chats por último mensaje
+          return updatedChats.sort((a, b) => 
+            new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+          );
+        });
+        
+        // Actualizar el chat actual si está abierto
+        if (currentChat?.id === message.chatId) {
+          setCurrentChat(prevChat => {
+            if (!prevChat) return prevChat;
+            return {
+              ...prevChat,
+              messages: [message, ...prevChat.messages],
+              lastMessageAt: message.createdAt,
+            };
+          });
+        }
+      });
+      
+      // Manejar escritura de usuarios
+      socket.on('user_typing', (data) => {
+        const { chatId, userId, userName } = data;
+        
+        setTypingUsers(prev => {
+          const chatTypers = prev[chatId] || [];
+          if (!chatTypers.includes(userName)) {
+            const newChatTypers = [...chatTypers, userName];
+            
+            // Eliminar después de un tiempo
+            setTimeout(() => {
+              setTypingUsers(latest => {
+                const currentTypers = latest[chatId] || [];
+                return {
+                  ...latest,
+                  [chatId]: currentTypers.filter(name => name !== userName)
+                };
+              });
+            }, 3000);
+            
+            return { ...prev, [chatId]: newChatTypers };
+          }
+          return prev;
+        });
+      });
+      
+      // Manejar mensajes leídos
+      socket.on('messages_read', (data) => {
+        const { chatId, userId } = data;
+        
+        // Actualizar estado de lectura de mensajes
+        setChats(prevChats => {
+          return prevChats.map(chat => {
+            if (chat.id === chatId) {
+              return {
+                ...chat,
+                messages: chat.messages.map(msg => {
+                  if (msg.userId === currentUser?.id && !msg.read) {
+                    return { ...msg, read: true };
+                  }
+                  return msg;
+                })
               };
             }
             return chat;
           });
         });
-
-        // Mostrar notificación si no es un mensaje propio y no está en el chat actual
-        if (message.userId !== currentUser.id && currentChat?.id !== message.chatId) {
-          const senderName = message.user?.name || 'Alguien';
-          toast({
-            title: `Mensaje nuevo de ${senderName}`,
-            description: message.content.substring(0, 50) + (message.content.length > 50 ? '...' : ''),
-          });
-        }
-      });
-
-      onUserTyping(({ chatId, userName }) => {
-        setTypingUsers((prev) => {
-          const updatedUsers = { ...prev };
-          if (!updatedUsers[chatId]) {
-            updatedUsers[chatId] = [];
-          }
-          if (!updatedUsers[chatId].includes(userName)) {
-            updatedUsers[chatId] = [...updatedUsers[chatId], userName];
-          }
-          
-          // Eliminar después de 3 segundos
-          setTimeout(() => {
-            setTypingUsers((current) => {
-              const updated = { ...current };
-              if (updated[chatId]) {
-                updated[chatId] = updated[chatId].filter(name => name !== userName);
-                if (updated[chatId].length === 0) {
-                  delete updated[chatId];
+        
+        // Actualizar mensajes en chat actual
+        if (currentChat?.id === chatId) {
+          setCurrentChat(prevChat => {
+            if (!prevChat) return prevChat;
+            return {
+              ...prevChat,
+              messages: prevChat.messages.map(msg => {
+                if (msg.userId === currentUser?.id && !msg.read) {
+                  return { ...msg, read: true };
                 }
-              }
-              return updated;
-            });
-          }, 3000);
-          
-          return updatedUsers;
+                return msg;
+              })
+            };
+          });
+        }
+      });
+      
+      // Manejar cambios de estado de usuarios
+      socket.on('user_status_change', (data) => {
+        const { userId, isOnline, lastSeen } = data;
+        
+        setChats(prevChats => {
+          return prevChats.map(chat => {
+            return {
+              ...chat,
+              participants: chat.participants.map(p => {
+                if (p.id === userId) {
+                  return { ...p, isOnline, lastSeen };
+                }
+                return p;
+              })
+            };
+          });
         });
-      });
-
-      onMessagesRead(({ chatId }) => {
-        if (currentChat && currentChat.id === chatId) {
-          setCurrentChat({
-            ...currentChat,
-            messages: currentChat.messages.map(msg => ({
-              ...msg,
-              read: true
-            }))
-          });
-        }
-      });
-
-      onUserStatusChange(({ userId, isOnline, lastSeen }) => {
-        setChats(prevChats => 
-          prevChats.map(chat => ({
-            ...chat,
-            participants: chat.participants.map(p => 
-              p.id === userId ? { ...p, isOnline, lastSeen: new Date(lastSeen) } : p
-            )
-          }))
-        );
-
+        
+        // Actualizar participantes en chat actual
         if (currentChat) {
-          setCurrentChat({
-            ...currentChat,
-            participants: currentChat.participants.map(p => 
-              p.id === userId ? { ...p, isOnline, lastSeen: new Date(lastSeen) } : p
-            )
+          setCurrentChat(prevChat => {
+            if (!prevChat) return prevChat;
+            return {
+              ...prevChat,
+              participants: prevChat.participants.map(p => {
+                if (p.id === userId) {
+                  return { ...p, isOnline, lastSeen };
+                }
+                return p;
+              })
+            };
           });
         }
       });
-
+      
+      // Limpiar eventos al desmontar
       return () => {
-        disconnectSocket();
+        socket.off('new_message');
+        socket.off('user_typing');
+        socket.off('messages_read');
+        socket.off('user_status_change');
       };
     }
-  }, [currentUser, token, currentChat]);
-
-  const fetchUserChats = async () => {
-    if (!currentUser || !token) return;
+  }, [isLoggedIn, token, currentUser?.id, currentChat?.id]);
+  
+  // Función para obtener chats del usuario
+  const fetchUserChats = useCallback(async () => {
+    if (!isLoggedIn) return;
     
     setLoadingChats(true);
+    
     try {
-      const response = await fetchChats(token);
-      if (response.success) {
-        setChats(response.chats);
+      // Usar datos mock si está configurado así
+      if (USE_MOCK_DATA) {
+        console.log("Usando datos mock para chats");
+        setChats(mockChats);
+        setLoadingChats(false);
+        return;
       }
+      
+      // Si no hay socket, no podemos obtener chats
+      const socket = getSocket();
+      if (!socket) {
+        throw new Error("No hay conexión de socket disponible");
+      }
+      
+      // Implementar lógica para obtener chats desde la API real
+      // TODO: Implementar cuando API esté disponible
+      
     } catch (error) {
       console.error("Error al cargar chats:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "No se pudieron cargar los chats. Inténtalo de nuevo más tarde."
+        description: "No se pudieron cargar tus conversaciones"
       });
+      
+      // Usar datos mock como fallback
+      setChats(mockChats);
+      
     } finally {
       setLoadingChats(false);
     }
-  };
-
-  const selectChat = async (chatId: string) => {
-    if (!currentUser || !token) return;
-    
-    setLoadingMessages(true);
-    try {
-      const response = await fetchChat(chatId, token);
-      if (response.success) {
-        setCurrentChat(response.chat);
-        
-        // Unirse al chat a través de socket
+  }, [isLoggedIn]);
+  
+  // Cargar chats al iniciar
+  useEffect(() => {
+    if (isLoggedIn) {
+      fetchUserChats();
+    } else {
+      setChats([]);
+      setCurrentChat(null);
+    }
+  }, [isLoggedIn, fetchUserChats]);
+  
+  // Seleccionar un chat
+  const selectChat = useCallback((chatId: string) => {
+    // Buscar el chat seleccionado
+    const selectedChat = chats.find(chat => chat.id === chatId);
+    if (selectedChat) {
+      setCurrentChat(selectedChat);
+      
+      // Unirse a la sala de chat vía socket
+      if (isLoggedIn) {
         emitJoinChat(chatId);
         
         // Marcar mensajes como leídos
         emitMarkRead(chatId);
       }
-    } catch (error) {
-      console.error("Error al cargar chat:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "No se pudo cargar la conversación. Inténtalo de nuevo más tarde."
-      });
-    } finally {
-      setLoadingMessages(false);
     }
-  };
-
-  const createChat = async (participantIds: string[], name?: string, isGroup: boolean = false) => {
-    if (!currentUser || !token) return;
-    
-    try {
-      const response = await createChatApi(participantIds, name, isGroup, token);
-      if (response.success) {
-        // Añadir el nuevo chat a la lista
-        setChats(prevChats => [response.chat, ...prevChats]);
-        
-        // Seleccionar el chat recién creado
-        setCurrentChat(response.chat);
-        
-        // Unirse al chat vía socket
-        emitJoinChat(response.chat.id);
-      }
-      return response;
-    } catch (error) {
-      console.error("Error al crear chat:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "No se pudo crear el chat. Inténtalo de nuevo más tarde."
-      });
-      throw error;
-    }
-  };
-
+  }, [chats, isLoggedIn]);
+  
+  // Enviar un mensaje
   const sendMessage = async (content: string) => {
-    if (!currentUser || !currentChat || !token) return;
+    if (!isLoggedIn || !currentUser || !currentChat) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Debes iniciar sesión y seleccionar un chat para enviar mensajes"
+      });
+      return;
+    }
     
     setSendingMessage(true);
+    
     try {
-      // Enviar a través de socket para tiempo real
-      emitSendMessage(currentChat.id, content);
+      // Usar datos mock si está configurado así
+      if (USE_MOCK_DATA) {
+        // Crear un ID único para el mensaje
+        const messageId = Date.now().toString();
+        
+        // Crear el mensaje
+        const newMessage: MessageType = {
+          id: messageId,
+          content,
+          userId: currentUser.id,
+          chatId: currentChat.id,
+          createdAt: new Date(),
+          read: false,
+          userName: currentUser.name,
+          userPhoto: currentUser.photoURL,
+        };
+        
+        // Actualizar el chat actual
+        setCurrentChat(prevChat => {
+          if (!prevChat) return prevChat;
+          return {
+            ...prevChat,
+            messages: [newMessage, ...prevChat.messages],
+            lastMessageAt: new Date(),
+          };
+        });
+        
+        // Actualizar la lista de chats
+        setChats(prevChats => {
+          const updatedChats = prevChats.map(chat => {
+            if (chat.id === currentChat.id) {
+              return {
+                ...chat,
+                messages: [newMessage, ...chat.messages],
+                lastMessageAt: new Date(),
+              };
+            }
+            return chat;
+          });
+          
+          // Ordenar chats por último mensaje
+          return updatedChats.sort((a, b) => 
+            new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+          );
+        });
+        
+        // Actualizar el chat en el contexto de Data
+        updateChat(currentChat.id, {
+          ...currentChat,
+          messages: [newMessage, ...currentChat.messages],
+          lastMessageAt: new Date(),
+        });
+        
+        return;
+      }
       
-      // También guardar en la base de datos
-      await sendMessageApi(currentChat.id, content, token);
+      // Si tenemos socket, enviar mensaje
+      const socket = getSocket();
+      if (socket) {
+        socket.emit('send_message', { 
+          chatId: currentChat.id, 
+          content 
+        });
+      } else {
+        throw new Error("No hay conexión de socket disponible");
+      }
+      
     } catch (error) {
       console.error("Error al enviar mensaje:", error);
       toast({
         variant: "destructive",
         title: "Error",
-        description: "No se pudo enviar el mensaje. Inténtalo de nuevo más tarde."
+        description: "No se pudo enviar el mensaje"
       });
     } finally {
       setSendingMessage(false);
     }
   };
-
-  const handleTyping = (chatId: string) => {
-    if (!currentUser) return;
-    emitTyping(chatId);
+  
+  // Crear un nuevo chat
+  const createChat = async (participantIds: string[], name?: string, isGroup: boolean = false) => {
+    if (!isLoggedIn || !currentUser) {
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Debes iniciar sesión para crear chats"
+      });
+      return;
+    }
+    
+    try {
+      // Usar datos mock si está configurado así
+      if (USE_MOCK_DATA) {
+        // Generar nuevo chat con los participantes
+        const newChat = generateNewChat(participantIds, currentUser, name, isGroup);
+        
+        // Agregar chat a la lista
+        setChats(prevChats => {
+          const updatedChats = [...prevChats, newChat];
+          return updatedChats.sort((a, b) => 
+            new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime()
+          );
+        });
+        
+        // Seleccionar el nuevo chat
+        setCurrentChat(newChat);
+        
+        // Guardar en el contexto de Data
+        addNewChat(newChat);
+        
+        return;
+      }
+      
+      // Implementar lógica para crear chat real cuando la API esté disponible
+      // TODO: Implementar cuando API esté disponible
+      
+    } catch (error) {
+      console.error("Error al crear chat:", error);
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "No se pudo crear el chat"
+      });
+      throw error;
+    }
   };
-
-  return (
-    <ChatContext.Provider
-      value={{
-        chats,
-        currentChat,
-        loadingChats,
-        loadingMessages,
-        sendingMessage,
-        typingUsers,
-        fetchUserChats,
-        selectChat,
-        createChat,
-        sendMessage,
-        handleTyping,
-      }}
-    >
-      {children}
-    </ChatContext.Provider>
-  );
+  
+  // Manejar escritura
+  const handleTyping = useCallback((chatId: string) => {
+    if (!isLoggedIn) return;
+    
+    // Enviar evento de escritura por socket
+    const socket = getSocket();
+    if (socket) {
+      socket.emit('typing', { chatId });
+    }
+  }, [isLoggedIn]);
+  
+  // Marcar mensajes como leídos
+  const markMessagesRead = async (chatId: string) => {
+    if (!isLoggedIn) return;
+    
+    try {
+      // Enviar evento de marcar como leído por socket
+      emitMarkRead(chatId);
+      
+      // Actualizar localmente
+      setChats(prevChats => {
+        return prevChats.map(chat => {
+          if (chat.id === chatId) {
+            return {
+              ...chat,
+              messages: chat.messages.map(msg => {
+                if (msg.userId !== currentUser?.id && !msg.read) {
+                  return { ...msg, read: true };
+                }
+                return msg;
+              })
+            };
+          }
+          return chat;
+        });
+      });
+      
+      // Actualizar en el chat actual
+      if (currentChat?.id === chatId) {
+        setCurrentChat(prevChat => {
+          if (!prevChat) return prevChat;
+          return {
+            ...prevChat,
+            messages: prevChat.messages.map(msg => {
+              if (msg.userId !== currentUser?.id && !msg.read) {
+                return { ...msg, read: true };
+              }
+              return msg;
+            })
+          };
+        });
+      }
+      
+    } catch (error) {
+      console.error("Error al marcar mensajes como leídos:", error);
+    }
+  };
+  
+  const value = {
+    chats,
+    currentChat,
+    loadingChats,
+    sendingMessage,
+    typingUsers,
+    fetchUserChats,
+    selectChat,
+    sendMessage,
+    createChat,
+    handleTyping,
+    markMessagesRead
+  };
+  
+  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 };
 
-export const useChat = () => useContext(ChatContext);
+export const useChat = (): ChatContextType => {
+  const context = useContext(ChatContext);
+  if (context === undefined) {
+    throw new Error('useChat must be used within a ChatProvider');
+  }
+  return context;
+};

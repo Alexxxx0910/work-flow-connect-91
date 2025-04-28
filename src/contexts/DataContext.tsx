@@ -1,472 +1,202 @@
 
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
-import { apiRequest } from "@/lib/api";
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { JobType } from './JobContext';
+import { ChatType } from './ChatContext';
+import { mockJobs, mockUsers, mockChats } from '@/data/mockData';
+import { API_URL, USE_MOCK_DATA } from '@/lib/apiUrl';
 
-// Definición de tipos
-export interface UserType {
+// Tipos
+type UserType = {
   id: string;
   name: string;
-  email: string;
-  role: 'freelancer' | 'client';
-  bio?: string;
-  skills?: string[];
+  email?: string;
+  role?: string;
   photoURL?: string;
-  hourlyRate?: number;
   isOnline?: boolean;
-  lastSeen?: string;
-  joinedAt?: number;
-}
-
-export interface JobType {
-  id: string;
-  title: string;
-  description: string;
-  budget: number;
-  category: string;
-  skills: string[];
-  status: 'open' | 'assigned' | 'completed' | 'cancelled';
-  userId: string;
-  createdAt: string;
-  updatedAt: string;
-  user?: UserType;
-  likedBy?: UserType[];
-  comments?: CommentType[];
-  // Compatibility with JobContext
-  userName: string;
-  timestamp: number;
-}
-
-export interface CommentType {
-  id: string;
-  content: string;
-  userId: string;
-  jobId: string;
-  createdAt: string;
-  updatedAt: string;
-  user?: UserType;
-  replies?: ReplyType[];
-}
-
-export interface ReplyType {
-  id: string;
-  content: string;
-  userId: string;
-  commentId: string;
-  createdAt: string;
-  updatedAt: string;
-  user?: UserType;
-}
-
-export interface ChatType {
-  id: string;
-  name: string;
-  isGroup: boolean;
-  lastMessageAt: string;
-  createdAt: string;
-  updatedAt: string;
-  messages?: MessageType[];
-  participants?: UserType[];
-  lastMessage?: {
-    content: string;
-    timestamp: number;
-  };
-}
-
-export interface MessageType {
-  id: string;
-  content: string;
-  userId: string;
-  chatId: string;
-  read: boolean;
-  createdAt: string;
-  updatedAt: string;
-  user?: UserType;
-}
-
-// Tipos para el contexto
-interface DataContextType {
-  users: UserType[];
-  setUsers: React.Dispatch<React.SetStateAction<UserType[]>>;
-  jobs: JobType[];
-  setJobs: React.Dispatch<React.SetStateAction<JobType[]>>;
-  comments: CommentType[];
-  setComments: React.Dispatch<React.SetStateAction<CommentType[]>>;
-  replies: ReplyType[];
-  setReplies: React.Dispatch<React.SetStateAction<ReplyType[]>>;
-  chats: ChatType[];
-  setChats: React.Dispatch<React.SetStateAction<ChatType[]>>;
-  messages: MessageType[];
-  setMessages: React.Dispatch<React.SetStateAction<MessageType[]>>;
-  savedJobs: string[];
-  setSavedJobs: React.Dispatch<React.SetStateAction<string[]>>;
-  likedJobs: string[];
-  setLikedJobs: React.Dispatch<React.SetStateAction<string[]>>;
-  loading: boolean;
-  error: string | null;
-  // Added methods for compatibility
-  getUserById: (userId: string) => UserType | undefined;
-  getAllUsers: () => UserType[];
-  jobCategories: string[];
-  skillsList: string[];
-  loadData: () => Promise<void>;
-}
-
-// Crear contexto
-const DataContext = createContext<DataContextType | undefined>(undefined);
-
-// Provider Component
-export const DataProvider = ({ children }: { children: ReactNode }) => {
-  // Estados para los datos
-  const [users, setUsers] = useState<UserType[]>([]);
-  const [jobs, setJobs] = useState<JobType[]>([]);
-  const [comments, setComments] = useState<CommentType[]>([]);
-  const [replies, setReplies] = useState<ReplyType[]>([]);
-  const [chats, setChats] = useState<ChatType[]>([]);
-  const [messages, setMessages] = useState<MessageType[]>([]);
-  
-  // Estados para las interacciones del usuario
-  const [savedJobs, setSavedJobs] = useState<string[]>([]);
-  const [likedJobs, setLikedJobs] = useState<string[]>([]);
-  
-  // Estados para la carga y errores
-  const [loading, setLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Categorías de trabajo y habilidades disponibles
-  const jobCategories = [
-    "Desarrollo Web",
-    "Diseño Gráfico",
-    "Marketing Digital",
-    "Redacción",
-    "Traducción",
-    "Administración",
-    "Contabilidad",
-    "Video y Animación",
-    "Música y Audio",
-    "Programación",
-    "Análisis de Datos",
-    "Otro"
-  ];
-  
-  const skillsList = [
-    "HTML", "CSS", "JavaScript", "TypeScript", "React", "Angular", "Vue.js", "Node.js", "Python", 
-    "PHP", "WordPress", "Shopify", "SEO", "SEM", "Photoshop", "Illustrator", "Adobe XD", "Figma",
-    "Copywriting", "Marketing de contenidos", "Redes sociales", "Email marketing", "PPC",
-    "Traducción", "Corrección de textos", "Gestión de proyectos", "Excel", "Word", "PowerPoint",
-    "Contabilidad", "Impuestos", "After Effects", "Premiere Pro", "Animación 3D", "Unity",
-    "Producción musical", "Mezcla de audio", "Java", "C#", "Swift", "Kotlin", "Flutter",
-    "React Native", "SQL", "MongoDB", "Firebase", "AWS", "Azure", "Google Cloud",
-    "Data Science", "Machine Learning", "Tableau", "Power BI"
-  ];
-
-  // Cargar datos mock para desarrollo
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  // Métodos añadidos para compatibilidad con el resto de la app
-  const getUserById = (userId: string): UserType | undefined => {
-    return users.find(user => user.id === userId);
-  };
-
-  const getAllUsers = (): UserType[] => {
-    return users;
-  };
-
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      
-      // Intenta cargar usuarios desde la API
-      try {
-        const response = await apiRequest('/users');
-        if (response && response.users) {
-          setUsers(response.users);
-        } else {
-          loadMockUsers();
-        }
-      } catch (error) {
-        console.error("Error al cargar usuarios reales:", error);
-        loadMockUsers();
-      }
-      
-      // Intenta cargar trabajos desde la API
-      try {
-        const response = await apiRequest('/jobs');
-        if (response && response.jobs) {
-          // Convertir el formato de la API al formato esperado por la aplicación
-          const formattedJobs = response.jobs.map((job: any) => ({
-            ...job,
-            timestamp: new Date(job.createdAt).getTime(),
-            userName: job.user?.name || "Usuario"
-          }));
-          setJobs(formattedJobs);
-        } else {
-          loadMockJobs();
-        }
-      } catch (error) {
-        console.error("Error al cargar trabajos reales:", error);
-        loadMockJobs();
-      }
-      
-    } catch (error) {
-      console.error("Error general al cargar datos:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Funciones para cargar datos mock como respaldo
-  const loadMockUsers = () => {
-    setUsers([
-      {
-        id: '1',
-        name: 'Juan Pérez',
-        email: 'juan@example.com',
-        role: 'freelancer',
-        bio: 'Desarrollador web con 5 años de experiencia',
-        skills: ['React', 'Node.js', 'TypeScript'],
-        photoURL: '/placeholder.svg',
-        hourlyRate: 25,
-        isOnline: true,
-        lastSeen: new Date().toISOString(),
-        joinedAt: Date.now() - 90 * 24 * 60 * 60 * 1000 // 90 días atrás
-      },
-      {
-        id: '2',
-        name: 'Ana López',
-        email: 'ana@example.com',
-        role: 'client',
-        photoURL: '/placeholder.svg',
-        isOnline: false,
-        lastSeen: new Date(Date.now() - 86400000).toISOString(), // Hace 1 día
-        joinedAt: Date.now() - 60 * 24 * 60 * 60 * 1000 // 60 días atrás
-      },
-      {
-        id: '3',
-        name: 'Empresa ABC',
-        email: 'empresa@abc.com',
-        role: 'client',
-        bio: 'Empresa dedicada al desarrollo de software',
-        photoURL: '/placeholder.svg',
-        isOnline: true,
-        lastSeen: new Date().toISOString(),
-        joinedAt: Date.now() - 30 * 24 * 60 * 60 * 1000 // 30 días atrás
-      }
-    ]);
-    console.log("Usuarios mock cargados");
-  };
-
-  const loadMockJobs = () => {
-    setJobs([
-      {
-        id: '1',
-        title: 'Desarrollo de aplicación web',
-        description: 'Necesitamos desarrollar una aplicación web completa usando React y Node.js.',
-        budget: 5000,
-        category: 'Desarrollo Web',
-        skills: ['React', 'Node.js', 'MongoDB'],
-        status: 'open',
-        userId: '3',
-        userName: 'Empresa ABC',
-        timestamp: Date.now() - 2 * 86400000,
-        createdAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-        updatedAt: new Date(Date.now() - 2 * 86400000).toISOString(),
-        user: {
-          id: '3',
-          name: 'Empresa ABC',
-          email: 'empresa@abc.com',
-          role: 'client',
-          photoURL: '/placeholder.svg'
-        }
-      },
-      {
-        id: '2',
-        title: 'Diseño de logo y branding',
-        description: 'Buscamos un diseñador gráfico para crear el logo y elementos de branding para nuestra startup.',
-        budget: 1200,
-        category: 'Diseño Gráfico',
-        skills: ['Illustrator', 'Photoshop', 'Branding'],
-        status: 'open',
-        userId: '2',
-        userName: 'Ana López',
-        timestamp: Date.now() - 5 * 86400000,
-        createdAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-        updatedAt: new Date(Date.now() - 5 * 86400000).toISOString(),
-        user: {
-          id: '2',
-          name: 'Ana López',
-          email: 'ana@example.com',
-          role: 'client',
-          photoURL: '/placeholder.svg'
-        }
-      }
-    ]);
-    console.log("Trabajos mock cargados");
-  };
-
-  // Cargar datos de comentarios mock
-  useEffect(() => {
-    setComments([
-      {
-        id: '1',
-        content: 'Me interesa este proyecto. Tengo experiencia en React y Node.js.',
-        userId: '1',
-        jobId: '1',
-        createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-        updatedAt: new Date(Date.now() - 1 * 86400000).toISOString(),
-        user: {
-          id: '1',
-          name: 'Juan Pérez',
-          email: 'juan@example.com',
-          role: 'freelancer',
-          photoURL: '/placeholder.svg'
-        }
-      }
-    ]);
-
-    setReplies([
-      {
-        id: '1',
-        content: 'Hola Juan, gracias por tu interés. ¿Podrías enviarnos tu portafolio?',
-        userId: '3',
-        commentId: '1',
-        createdAt: new Date(Date.now() - 12 * 3600000).toISOString(),
-        updatedAt: new Date(Date.now() - 12 * 3600000).toISOString(),
-        user: {
-          id: '3',
-          name: 'Empresa ABC',
-          email: 'empresa@abc.com',
-          role: 'client',
-          photoURL: '/placeholder.svg'
-        }
-      }
-    ]);
-
-    // Simular chats
-    setChats([
-      {
-        id: '1',
-        name: '',
-        isGroup: false,
-        lastMessageAt: new Date(Date.now() - 2 * 3600000).toISOString(),
-        createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-        updatedAt: new Date(Date.now() - 2 * 3600000).toISOString(),
-        lastMessage: {
-          content: '¿Les parece bien mañana a las 10am?',
-          timestamp: Date.now() - 2 * 3600000
-        },
-        participants: [
-          {
-            id: '1',
-            name: 'Juan Pérez',
-            email: 'juan@example.com',
-            role: 'freelancer',
-            photoURL: '/placeholder.svg'
-          },
-          {
-            id: '3',
-            name: 'Empresa ABC',
-            email: 'empresa@abc.com',
-            role: 'client',
-            photoURL: '/placeholder.svg'
-          }
-        ]
-      }
-    ]);
-
-    // Simular mensajes
-    setMessages([
-      {
-        id: '1',
-        content: 'Hola, me gustaría discutir el proyecto con ustedes.',
-        userId: '1',
-        chatId: '1',
-        read: true,
-        createdAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-        updatedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
-        user: {
-          id: '1',
-          name: 'Juan Pérez',
-          email: 'juan@example.com',
-          role: 'freelancer',
-          photoURL: '/placeholder.svg'
-        }
-      },
-      {
-        id: '2',
-        content: 'Claro, podemos agendar una videollamada para hablar de los detalles.',
-        userId: '3',
-        chatId: '1',
-        read: true,
-        createdAt: new Date(Date.now() - 2.5 * 86400000).toISOString(),
-        updatedAt: new Date(Date.now() - 2.5 * 86400000).toISOString(),
-        user: {
-          id: '3',
-          name: 'Empresa ABC',
-          email: 'empresa@abc.com',
-          role: 'client',
-          photoURL: '/placeholder.svg'
-        }
-      },
-      {
-        id: '3',
-        content: '¿Les parece bien mañana a las 10am?',
-        userId: '1',
-        chatId: '1',
-        read: true,
-        createdAt: new Date(Date.now() - 2 * 3600000).toISOString(),
-        updatedAt: new Date(Date.now() - 2 * 3600000).toISOString(),
-        user: {
-          id: '1',
-          name: 'Juan Pérez',
-          email: 'juan@example.com',
-          role: 'freelancer',
-          photoURL: '/placeholder.svg'
-        }
-      }
-    ]);
-
-    console.log('Datos mock cargados correctamente');
-  }, []);
-
-  return (
-    <DataContext.Provider value={{
-      users,
-      setUsers,
-      jobs,
-      setJobs,
-      comments,
-      setComments,
-      replies,
-      setReplies,
-      chats,
-      setChats,
-      messages,
-      setMessages,
-      savedJobs,
-      setSavedJobs,
-      likedJobs,
-      setLikedJobs,
-      loading,
-      error,
-      // Métodos añadidos
-      getUserById,
-      getAllUsers,
-      jobCategories,
-      skillsList,
-      loadData
-    }}>
-      {children}
-    </DataContext.Provider>
-  );
+  lastSeen?: Date;
 };
 
-// Hook personalizado para usar el contexto
-export const useData = () => {
+type DataContextType = {
+  users: UserType[];
+  jobs: JobType[];
+  jobCategories: string[];
+  skillsList: string[];
+  loadingUsers: boolean;
+  loadingJobs: boolean;
+  addNewJob: (job: JobType) => void;
+  updateJob: (jobId: string, updatedJob: JobType) => void;
+  deleteJob: (jobId: string) => void;
+  addNewChat: (chat: ChatType) => void;
+  updateChat: (chatId: string, updatedChat: ChatType) => void;
+};
+
+// Categorías de trabajo y habilidades predefinidas
+const JOB_CATEGORIES = [
+  'Desarrollo web',
+  'Desarrollo móvil',
+  'Diseño gráfico',
+  'Marketing digital',
+  'Redacción y traducción',
+  'Video y animación',
+  'Música y audio',
+  'Programación y tecnología',
+  'Negocios',
+  'Estilo de vida',
+  'Otros'
+];
+
+const SKILLS_LIST = [
+  'JavaScript', 'TypeScript', 'React', 'Angular', 'Vue.js', 'Node.js',
+  'Python', 'Java', 'PHP', 'Ruby', 'C#', '.NET',
+  'HTML', 'CSS', 'Sass', 'Bootstrap', 'Tailwind CSS',
+  'MongoDB', 'MySQL', 'PostgreSQL', 'Firebase',
+  'AWS', 'Azure', 'Google Cloud',
+  'Docker', 'Kubernetes', 'CI/CD',
+  'WordPress', 'Shopify', 'Wix',
+  'SEO', 'SEM', 'Social Media',
+  'Photoshop', 'Illustrator', 'Sketch', 'Figma', 'XD',
+  'UX/UI', 'Diseño web', 'Diseño móvil',
+  'Swift', 'Kotlin', 'Flutter', 'React Native',
+  'Redacción', 'Copywriting', 'Traducción',
+  'Video', 'Animación', 'Motion Graphics',
+  'Edición de audio', 'Producción musical'
+];
+
+const DataContext = createContext<DataContextType | undefined>(undefined);
+
+export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [users, setUsers] = useState<UserType[]>([]);
+  const [jobs, setJobs] = useState<JobType[]>([]);
+  const [loadingUsers, setLoadingUsers] = useState<boolean>(false);
+  const [loadingJobs, setLoadingJobs] = useState<boolean>(false);
+  
+  // Cargar usuarios y trabajos al iniciar
+  useEffect(() => {
+    fetchUsers();
+    fetchJobs();
+  }, []);
+  
+  // Función para obtener usuarios
+  const fetchUsers = async () => {
+    setLoadingUsers(true);
+    
+    try {
+      // Primero intentar obtener usuarios reales
+      if (!USE_MOCK_DATA) {
+        try {
+          const response = await fetch(`${API_URL}/users`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.users) {
+              setUsers(data.users);
+              setLoadingUsers(false);
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("Error al cargar usuarios reales:", error);
+        }
+      }
+      
+      // Si no se pudieron obtener usuarios reales, usar mock data
+      setUsers(mockUsers);
+      console.log("Usuarios mock cargados");
+      
+    } catch (error) {
+      console.error("Error al obtener usuarios:", error);
+    } finally {
+      setLoadingUsers(false);
+    }
+  };
+  
+  // Función para obtener trabajos
+  const fetchJobs = async () => {
+    setLoadingJobs(true);
+    
+    try {
+      // Primero intentar obtener trabajos reales
+      if (!USE_MOCK_DATA) {
+        try {
+          console.log("API Request: GET", `${API_URL}/jobs`, undefined);
+          const response = await fetch(`${API_URL}/jobs`);
+          
+          if (response.ok) {
+            const data = await response.json();
+            if (data.success && data.jobs) {
+              setJobs(data.jobs);
+              setLoadingJobs(false);
+              return;
+            }
+          }
+        } catch (error) {
+          console.error("Error al cargar trabajos reales:", error);
+        }
+      }
+      
+      // Si no se pudieron obtener trabajos reales, usar mock data
+      setJobs(mockJobs);
+      console.log("Trabajos mock cargados");
+      
+    } catch (error) {
+      console.error("Error al obtener trabajos:", error);
+    } finally {
+      setLoadingJobs(false);
+    }
+  };
+  
+  // Función para añadir un nuevo trabajo
+  const addNewJob = (job: JobType) => {
+    setJobs(prevJobs => [job, ...prevJobs]);
+  };
+  
+  // Función para actualizar un trabajo
+  const updateJob = (jobId: string, updatedJob: JobType) => {
+    setJobs(prevJobs => 
+      prevJobs.map(job => job.id === jobId ? updatedJob : job)
+    );
+  };
+  
+  // Función para eliminar un trabajo
+  const deleteJob = (jobId: string) => {
+    setJobs(prevJobs => prevJobs.filter(job => job.id !== jobId));
+  };
+  
+  // Función para añadir un nuevo chat
+  const addNewChat = (chat: ChatType) => {
+    // Esta función sería implementada si se añadiera gestión de chats al contexto
+    // Por ahora solo para demo
+    console.log("Nuevo chat añadido:", chat);
+  };
+  
+  // Función para actualizar un chat
+  const updateChat = (chatId: string, updatedChat: ChatType) => {
+    // Esta función sería implementada si se añadiera gestión de chats al contexto
+    // Por ahora solo para demo
+    console.log("Chat actualizado:", chatId, updatedChat);
+  };
+  
+  const value = {
+    users,
+    jobs,
+    jobCategories: JOB_CATEGORIES,
+    skillsList: SKILLS_LIST,
+    loadingUsers,
+    loadingJobs,
+    addNewJob,
+    updateJob,
+    deleteJob,
+    addNewChat,
+    updateChat
+  };
+  
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+};
+
+export const useData = (): DataContextType => {
   const context = useContext(DataContext);
   if (context === undefined) {
-    throw new Error('useData debe usarse dentro de un DataProvider');
+    throw new Error('useData must be used within a DataProvider');
   }
   return context;
 };
