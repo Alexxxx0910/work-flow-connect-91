@@ -1,273 +1,198 @@
 
-/**
- * Contexto de Autenticación
- * 
- * Este contexto proporciona funcionalidad de autenticación para la aplicación, incluyendo:
- * - Manejo de inicio de sesión y registro de usuarios
- * - Gestión del estado del usuario actual
- * - Actualización del perfil de usuario
- * - Cierre de sesión
- */
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import { toast } from '@/components/ui/use-toast';
+import axios from 'axios';
+import { disconnectSocket } from '@/api/chatApi';
 
-import React, { createContext, useState, useContext, useEffect, ReactNode } from 'react';
-import { toast } from "@/components/ui/use-toast";
-import { apiRequest } from "@/lib/api";
-import { UserType } from "@/contexts/DataContext";
-import { 
-  saveToken, 
-  getToken, 
-  removeToken, 
-  saveUserData, 
-  removeUserData, 
-  getUserData,
-  clearSession 
-} from "@/lib/authService";
-import { disconnectSocket } from '@/lib/socket';
+// API URL
+const API_URL = 'http://localhost:5000/api';
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  photoURL: string;
+  isOnline: boolean;
+  lastSeen: Date;
+}
 
 interface AuthContextType {
-  currentUser: UserType | null;
+  currentUser: User | null;
+  token: string | null;
   loading: boolean;
+  isLoggedIn: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string, name: string, role?: 'freelancer' | 'client') => Promise<void>;
+  register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateUserProfile: (data: Partial<UserType>) => Promise<void>;
-  uploadProfilePhoto: (file: File) => Promise<string>;
+  checkAuth: () => Promise<void>;
 }
 
-const AuthContext = createContext<AuthContextType | null>(null);
+const AuthContext = createContext<AuthContextType>({
+  currentUser: null,
+  token: null,
+  loading: true,
+  isLoggedIn: false,
+  login: async () => {},
+  register: async () => {},
+  logout: async () => {},
+  checkAuth: async () => {}
+});
 
-/**
- * Hook personalizado para acceder al contexto de autenticación
- */
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth debe usarse dentro de un AuthProvider');
-  }
-  return context;
-};
-
-interface AuthProviderProps {
-  children: ReactNode;
-}
-
-/**
- * Proveedor del contexto de autenticación
- */
-export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
-  const [currentUser, setCurrentUser] = useState<UserType | null>(getUserData());
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [token, setToken] = useState<string | null>(localStorage.getItem('wfc_token'));
   const [loading, setLoading] = useState(true);
 
+  // Verificar autenticación al cargar
   useEffect(() => {
-    // Verificar sesión al cargar
-    const verifySession = async () => {
-      const token = getToken();
-      if (token) {
-        try {
-          const response = await apiRequest('/auth/verify');
-          const user = response.user;
-          setCurrentUser(user);
-          saveUserData(user);
-        } catch (error) {
-          console.error('Error al verificar sesión:', error);
-          clearSession();
-        }
-      }
-      setLoading(false);
-    };
-
-    verifySession();
+    checkAuth();
   }, []);
 
-  /**
-   * Función para iniciar sesión
-   */
+  const checkAuth = async () => {
+    const storedToken = localStorage.getItem('wfc_token');
+    if (!storedToken) {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const response = await axios.get(`${API_URL}/auth/verify`, {
+        headers: {
+          Authorization: `Bearer ${storedToken}`
+        }
+      });
+
+      if (response.data.success) {
+        setCurrentUser(response.data.user);
+        setToken(storedToken);
+      } else {
+        // Token inválido
+        localStorage.removeItem('wfc_token');
+        setCurrentUser(null);
+        setToken(null);
+      }
+    } catch (error) {
+      console.error('Error al verificar autenticación:', error);
+      // Token expirado o inválido
+      localStorage.removeItem('wfc_token');
+      setCurrentUser(null);
+      setToken(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const login = async (email: string, password: string) => {
     setLoading(true);
     try {
-      const response = await apiRequest('/auth/login', 'POST', { email, password });
-      const { user, token } = response;
+      const response = await axios.post(`${API_URL}/auth/login`, { email, password });
       
-      // Guardar token y datos de usuario
-      saveToken(token);
-      saveUserData(user);
-      setCurrentUser(user);
+      if (response.data.success) {
+        setCurrentUser(response.data.user);
+        
+        // Guardar token
+        const userToken = response.data.token;
+        setToken(userToken);
+        localStorage.setItem('wfc_token', userToken);
+        
+        toast({
+          title: "Inicio de sesión exitoso",
+          description: `Bienvenido, ${response.data.user.name}`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Error en inicio de sesión:', error);
       
-      toast({
-        title: "Inicio de sesión exitoso",
-        description: "Bienvenido a WorkFlowConnect",
-      });
-    } catch (error) {
-      console.error('Error de inicio de sesión:', error);
+      // Mostrar mensaje de error
+      const errorMessage = error.response?.data?.message || 'Error al iniciar sesión. Verifica tus credenciales.';
       toast({
         variant: "destructive",
         title: "Error de inicio de sesión",
-        description: error instanceof Error ? error.message : "Error al iniciar sesión",
+        description: errorMessage,
       });
+      
       throw error;
     } finally {
       setLoading(false);
     }
   };
 
-  /**
-   * Función para registrar nuevo usuario
-   */
-  const register = async (email: string, password: string, name: string, role: 'freelancer' | 'client' = 'freelancer') => {
+  const register = async (name: string, email: string, password: string) => {
     setLoading(true);
     try {
-      const response = await apiRequest('/auth/register', 'POST', { 
-        email, 
-        password, 
-        name,
-        role 
-      });
+      const response = await axios.post(`${API_URL}/auth/register`, { name, email, password });
       
-      const { user, token } = response;
+      if (response.data.success) {
+        setCurrentUser(response.data.user);
+        
+        // Guardar token
+        const userToken = response.data.token;
+        setToken(userToken);
+        localStorage.setItem('wfc_token', userToken);
+        
+        toast({
+          title: "Registro exitoso",
+          description: `Bienvenido a WorkFlow Connect, ${response.data.user.name}`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Error en registro:', error);
       
-      // Guardar token y datos de usuario
-      saveToken(token);
-      saveUserData(user);
-      setCurrentUser(user);
-      
-      toast({
-        title: "Registro exitoso",
-        description: "¡Bienvenido a WorkFlowConnect!",
-      });
-    } catch (error) {
-      console.error('Error de registro:', error);
+      // Mostrar mensaje de error
+      const errorMessage = error.response?.data?.message || 'Error al registrar usuario. Inténtalo nuevamente.';
       toast({
         variant: "destructive",
         title: "Error de registro",
-        description: error instanceof Error ? error.message : "Error al registrar",
+        description: errorMessage,
       });
+      
       throw error;
     } finally {
       setLoading(false);
     }
   };
 
-  /**
-   * Función para cerrar sesión
-   */
   const logout = async () => {
-    try {
-      // Llamar al endpoint de logout
-      if (getToken()) {
-        await apiRequest('/auth/logout', 'POST');
+    if (token) {
+      try {
+        await axios.post(`${API_URL}/auth/logout`, {}, {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+      } catch (error) {
+        console.error('Error al cerrar sesión en el servidor:', error);
+        // Continuar con el cierre de sesión local incluso si hay error en el servidor
       }
-      
-      // Limpiar datos locales
-      clearSession();
-      disconnectSocket();
-      setCurrentUser(null);
-      
-      toast({
-        title: "Sesión cerrada",
-        description: "Has cerrado sesión correctamente",
-      });
-    } catch (error) {
-      console.error('Error al cerrar sesión:', error);
-      // Aún así, limpiamos los datos locales
-      clearSession();
-      setCurrentUser(null);
-      
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Error al cerrar sesión"
-      });
     }
-  };
-
-  /**
-   * Función para actualizar el perfil
-   */
-  const updateUserProfile = async (data: Partial<UserType>) => {
-    if (!currentUser) throw new Error('No hay usuario autenticado');
     
-    try {
-      const response = await apiRequest('/users/profile', 'PUT', data);
-      const updatedUser = response.user;
-      
-      saveUserData(updatedUser);
-      setCurrentUser(updatedUser);
-      
-      toast({
-        title: "Perfil actualizado",
-        description: "Tus cambios han sido guardados",
-      });
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Error al actualizar el perfil"
-      });
-      throw error;
-    }
-  };
-
-  /**
-   * Función para subir foto de perfil
-   */
-  const uploadProfilePhoto = async (file: File) => {
-    if (!currentUser) throw new Error('No hay usuario autenticado');
+    // Desconectar socket
+    disconnectSocket();
     
-    try {
-      // Para subir archivos necesitamos usar FormData en lugar de JSON
-      const formData = new FormData();
-      formData.append('photo', file);
-      
-      // Implementar la lógica de subida usando fetch directamente, ya que apiRequest es para JSON
-      const token = getToken();
-      const response = await fetch(`http://localhost:5000/api/users/upload-photo`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
-        body: formData
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Error al subir la foto');
-      }
-      
-      const data = await response.json();
-      const photoURL = data.photoURL;
-      
-      // Actualizar usuario con la nueva foto
-      const updatedUser = { ...currentUser, photoURL };
-      saveUserData(updatedUser);
-      setCurrentUser(updatedUser);
-      
-      toast({
-        title: "Foto actualizada",
-        description: "Tu foto de perfil ha sido actualizada",
-      });
-      
-      return photoURL;
-    } catch (error) {
-      console.error("Error en uploadProfilePhoto:", error);
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Error al subir la foto de perfil"
-      });
-      throw error;
-    }
+    // Limpiar estado local
+    localStorage.removeItem('wfc_token');
+    setCurrentUser(null);
+    setToken(null);
+    
+    toast({
+      title: "Cierre de sesión",
+      description: "Has cerrado sesión correctamente",
+    });
   };
 
   return (
-    <AuthContext.Provider 
-      value={{ 
-        currentUser, 
-        loading, 
-        login, 
-        register, 
+    <AuthContext.Provider
+      value={{
+        currentUser,
+        token,
+        loading,
+        isLoggedIn: !!currentUser,
+        login,
+        register,
         logout,
-        updateUserProfile,
-        uploadProfilePhoto
+        checkAuth
       }}
     >
       {children}
@@ -275,4 +200,4 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   );
 };
 
-export default AuthContext;
+export const useAuth = () => useContext(AuthContext);
