@@ -23,11 +23,11 @@ Reply.belongsTo(Comment, { foreignKey: 'commentId' });
 User.hasMany(Reply, { foreignKey: 'userId' });
 Comment.hasMany(Reply, { foreignKey: 'commentId' });
 
-// Asociaciones de chat
+// Asociaciones de chat - Cambiamos la definición para usar ChatId en vez de chatId
 Chat.belongsToMany(User, { 
   through: 'ChatParticipants', 
   as: 'participants',
-  foreignKey: 'chatId',
+  foreignKey: 'ChatId',  // Cambiado de chatId a ChatId
   otherKey: 'userId'
 });
 
@@ -35,7 +35,7 @@ User.belongsToMany(Chat, {
   through: 'ChatParticipants', 
   as: 'chats',
   foreignKey: 'userId',
-  otherKey: 'chatId'
+  otherKey: 'ChatId'  // Cambiado de chatId a ChatId
 });
 
 // Asociaciones de mensajes

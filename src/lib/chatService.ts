@@ -30,17 +30,15 @@ export const getChats = async (): Promise<ChatType[]> => {
       participants: chat.participants.map((p: any) => p.id),
       messages: (chat.messages || []).map((m: any) => ({
         id: m.id,
-        senderId: m.userId,
+        userId: m.userId,
         content: m.content,
-        timestamp: new Date(m.createdAt).getTime()
+        timestamp: new Date(m.createdAt).getTime(),
+        chatId: chat.id,
+        createdAt: new Date(m.createdAt),
+        read: m.read || false
       })),
       isGroup: chat.isGroup,
-      lastMessage: chat.messages && chat.messages.length > 0 ? {
-        id: chat.messages[0].id,
-        senderId: chat.messages[0].userId,
-        content: chat.messages[0].content,
-        timestamp: new Date(chat.messages[0].createdAt).getTime()
-      } : undefined
+      lastMessageAt: new Date(chat.lastMessageAt)
     }));
   } catch (error) {
     console.error('Error al obtener chats:', error);
@@ -89,7 +87,7 @@ export const createChat = async (participantIds: string[], name = ""): Promise<C
       participants: chat.participants.map((p: any) => p.id),
       messages: [],
       isGroup: chat.isGroup,
-      lastMessage: undefined
+      lastMessageAt: new Date()
     };
   } catch (error) {
     console.error('Error al crear chat:', error);
@@ -118,9 +116,12 @@ export const sendMessage = async (chatId: string, content: string): Promise<Mess
     const message = response.chatMessage;
     return {
       id: message.id,
-      senderId: message.userId,
+      userId: message.userId,
       content: message.content,
-      timestamp: new Date(message.createdAt).getTime()
+      timestamp: new Date(message.createdAt).getTime(),
+      chatId,
+      createdAt: new Date(message.createdAt),
+      read: false
     };
   } catch (error) {
     console.error('Error al enviar mensaje:', error);
@@ -174,17 +175,15 @@ export const getChatById = async (chatId: string): Promise<ChatType | null> => {
       participants: chat.participants.map((p: any) => p.id),
       messages: (chat.messages || []).map((m: any) => ({
         id: m.id,
-        senderId: m.userId,
+        userId: m.userId,
         content: m.content,
-        timestamp: new Date(m.createdAt).getTime()
+        timestamp: new Date(m.createdAt).getTime(),
+        chatId,
+        createdAt: new Date(m.createdAt),
+        read: m.read || false
       })),
       isGroup: chat.isGroup,
-      lastMessage: chat.messages && chat.messages.length > 0 ? {
-        id: chat.messages[0].id,
-        senderId: chat.messages[0].userId,
-        content: chat.messages[0].content,
-        timestamp: new Date(chat.messages[0].createdAt).getTime()
-      } : undefined
+      lastMessageAt: new Date(chat.lastMessageAt)
     };
   } catch (error) {
     console.error('Error al obtener chat:', error);
@@ -227,4 +226,3 @@ export const updateChatListeners = (chats: ChatType[]) => {
     listener(chats);
   });
 };
-

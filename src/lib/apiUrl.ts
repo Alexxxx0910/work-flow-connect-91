@@ -11,5 +11,5 @@ export const API_URL = isProduction
   ? "/api" // Para producción usaremos rutas relativas o ajustar a una URL real
   : "http://localhost:5000/api";
 
-// Flag para usar datos mock
-export const USE_MOCK_DATA = isProduction || true; // Siempre usar mock data por ahora
+// Flag para usar datos mock - Forzamos a true para evitar errores de conexión
+export const USE_MOCK_DATA = true;

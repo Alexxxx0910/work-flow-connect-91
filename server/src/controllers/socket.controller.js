@@ -65,8 +65,19 @@ const initSocket = (io) => {
         lastSeen: new Date()
       });
       
-      // Unirse a las salas de chat del usuario
-      const userChats = await user.getChats();
+      // Unirse a las salas de chat del usuario - Usando raw query para evitar problemas con nombres de columnas
+      const userChats = await Chat.findAll({
+        include: [
+          {
+            model: User, 
+            as: 'participants',
+            where: { id: user.id },
+            attributes: [],
+            through: { attributes: [] }
+          }
+        ]
+      });
+      
       userChats.forEach(chat => {
         socket.join(`chat:${chat.id}`);
       });
